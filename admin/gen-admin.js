@@ -1,5 +1,5 @@
 // Kupkop PH — Platform Admin (web ops console) design mockups.
-// Desktop browser-framed SVG → PNG. Run from design/admin:  node gen-admin.js
+// Desktop browser-framed SVG → PNG. Run from screens/admin:  node gen-admin.js
 // Platform admin = Kupkop staff: verify shelters/members + moderate (Decision A, web-only).
 //
 // ⚠️ SCOPE (decided 2026-07-20): these 17 screens (incl. sign-in / error / reset) are the **Phase 2** build spec, NOT MVP.
@@ -979,6 +979,6 @@ function memberDetailSuspended() {
     const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">${defs}<rect width="${W}" height="${H}" fill="${BG}"/>${inner}</svg>`;
     await sharp(Buffer.from(svg), { density: 132 }).png().toFile(path.join(DIR, name));
     fs.writeFileSync(path.join(DIR, name.replace(/\.png$/, ".svg")), svg);
-    console.log("wrote design/admin/" + name);
+    console.log("wrote screens/admin/" + name);
   }
 })();

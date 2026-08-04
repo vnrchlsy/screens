@@ -1,7 +1,7 @@
 // Sprint 1 (Identity & Profiles / M1) hi-fi screen mockups for Kupkop PH.
 // Same house style as website/assets/gen-mockups.js — hand-authored SVG → PNG via sharp.
 // Phone frame: SW=540, SH=1170, PAD=30, dark bezel + notch.
-// Run from design/screens:  node gen-screens.js
+// Run from screens/user:  node gen-screens.js
 //
 // DRAFT 1 — welcome + signup only (approve direction before the full set:
 // OTP, choose account type, my profile, add pet, settings).
@@ -5885,6 +5885,6 @@ function phone(inner) {
     // Also emit an editable SVG for Figma import (vector shapes + editable text).
     const svgName = name.replace(/\.png$/, ".svg");
     fs.writeFileSync(path.join(DIR, svgName), svg);
-    console.log("wrote design/screens/" + name + " + " + svgName);
+    console.log("wrote screens/user/" + name + " + " + svgName);
   }
 })();
