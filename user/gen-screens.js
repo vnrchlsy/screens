@@ -947,7 +947,12 @@ function statusChip(x, y, label) {
     // offer_status. Deliberately NO amber here: amber means "this needs someone to act", and a live
     // offer needs nothing — the unclaimed REPORT is what still needs someone. Colouring offers amber
     // would put two different urgencies in the same colour on the same screen.
-    Open: ["#E4EEF0", "#1C6B6B"], Matched: ["#EAF3DE", "#27500A"], Expired: ["#ece9e1", "#6b6a63"] };
+    Open: ["#E4EEF0", "#1C6B6B"], Matched: ["#EAF3DE", "#27500A"], Expired: ["#ece9e1", "#6b6a63"],
+    // Volunteer reliability (dev/volunteer-feature.md · §6.5). Amber for "Needs re-approval"
+    // because it is the only one that needs someone to act — same rule as Reported above.
+    // ⚠️ "Reliable" has a FLOOR: it requires completed shifts. A brand-new volunteer reads
+    // "New volunteer", never Reliable — an unearned trust signal is worse than none.
+    Reliable: ["#EAF3DE", "#27500A"], "New volunteer": ["#E4EEF0", "#1C6B6B"] };
   const [bg, fg] = map[label] || ["#eeeeee", MUTED];
   const w = 40 + label.length * 10;
   return rrect(x - w, y, w, 36, 18, bg) + `<circle cx="${x - w + 16}" cy="${y + 18}" r="4" fill="${fg}"/>` +
@@ -1861,8 +1866,14 @@ function shelterVerifyStatus(state) {
 // sent). opts.tier1 → Community-rescue variant (home-heart name/copy). Draft-only, gated-public:
 // Donations is the one locked quick action; the foot card carries the useful next move per state.
 function shelterDashboardPending(paws, opts = {}) {
-  const submitted = opts.submitted !== false;
+  const partial = !!opts.partial;              // base set in, SEC/BAI/PRC deferred — implies no row
+  const submitted = opts.submitted !== false && !partial;
   const tier1 = !!opts.tier1;
+  // Q8 (2026-08-06): a tier-2 that sent the base set (Government ID · proof of address · space
+  // photos) but DEFERRED the SEC/BAI/PRC set has no verification_request row yet — the derived
+  // "not sent" state — yet it is NOT a shelter that sent nothing, so it must not read "Documents
+  // not sent yet". Third state, its own copy; the "two states never share a component" rule extends.
+  const state = submitted ? "review" : partial ? "partial" : "none";
   const name = tier1 ? "Aling Nena's Rescue" : "PAWS Manila";
   let s = `<rect width="${SW}" height="${SH}" fill="${V2BG}"/>` + statusbar(false);
   s += t(34, 92, name, { size: 28, weight: "800", fill: V2INK, ls: -0.5 });
@@ -1875,10 +1886,15 @@ function shelterDashboardPending(paws, opts = {}) {
   s += rrect(34, 152, 472, 108, 22, WARNBG);
   s += v2squircle(82, 206, 46, "#F3E1BE", 15);
   s += submitted ? clockIcon(82, 206, 18, WARN2) : alertIcon(82, 206, 18, WARN2);
-  s += t(124, 197, submitted ? "Under review" : "Documents not sent yet", { size: 19, weight: "800", fill: WARN2 });
-  s += t(124, 225, submitted ? "Listings stay hidden &amp; donations off" : "We can't start checking until you", { size: 13.5, fill: "#8a6d3b" });
-  s += t(124, 246, submitted ? "until approved." : "upload them.", { size: 13.5, fill: "#8a6d3b" });
-  s += t(486, 214, submitted ? "Status ›" : "Upload ›", { size: 15.5, anchor: "end", weight: "700", fill: WARN2 });
+  const bn = {
+    review:  { head: "Under review",             l1: "Listings stay hidden &amp; donations off", l2: "until approved.",              cta: "Status ›" },
+    partial: { head: "Verification not finished", l1: "Your first documents are in — the",        l2: "SEC &amp; BAI papers finish it.", cta: "Finish ›" },
+    none:    { head: "Documents not sent yet",    l1: "We can't start checking until you",        l2: "upload them.",                 cta: "Upload ›" },
+  }[state];
+  s += t(124, 197, bn.head, { size: 19, weight: "800", fill: WARN2 });
+  s += t(124, 225, bn.l1, { size: 13.5, fill: "#8a6d3b" });
+  s += t(124, 246, bn.l2, { size: 13.5, fill: "#8a6d3b" });
+  s += t(486, 214, bn.cta, { size: 15.5, anchor: "end", weight: "700", fill: WARN2 });
 
   // stat tiles (draft state)
   const SY = 288;
@@ -1913,9 +1929,14 @@ function shelterDashboardPending(paws, opts = {}) {
 
   // foot accent card — the useful next move, differs by state
   s += rrect(34, 684, 472, 100, 22, "#E2EEF0");
-  s += t(58, 724, submitted ? "Draft your listings while you wait" : "Finish verifying to go live", { size: 17.5, weight: "800", fill: TEALDK });
-  s += t(58, 752, submitted ? "They go live the moment you're approved." : "Upload your documents to get approved.", { size: 13.5, fill: "#5f6b6a" });
-  s += t(486, 738, submitted ? "Start ›" : "Continue ›", { size: 16, anchor: "end", weight: "800", fill: TEALDK });
+  const foot = {
+    review:  { head: "Draft your listings while you wait", sub: "They go live the moment you're approved.", cta: "Start ›" },
+    partial: { head: "Finish verifying to go live",        sub: "Just the SEC &amp; BAI papers to go.",      cta: "Continue ›" },
+    none:    { head: "Finish verifying to go live",        sub: "Upload your documents to get approved.",    cta: "Continue ›" },
+  }[state];
+  s += t(58, 724, foot.head, { size: 17.5, weight: "800", fill: TEALDK });
+  s += t(58, 752, foot.sub, { size: 13.5, fill: "#5f6b6a" });
+  s += t(486, 738, foot.cta, { size: 16, anchor: "end", weight: "800", fill: TEALDK });
 
   s += shelterNav(0);
   return s;
@@ -3917,29 +3938,62 @@ function shelterVolunteerCreate() {
 }
 
 // ---------- Shelter Kawang-Gawa: approve / decline sign-ups ----------
-function shelterVolunteerRequests() {
+// opts.flagged → the first pending volunteer has hit the no-show re-approval threshold
+// (3 CONSECUTIVE no_show — dev/volunteer-feature.md, "No-show re-approval").
+//
+// Why the reliability signal lives HERE and not only on shelter-volunteer-detail: Approve/Decline
+// is tapped on THIS list. A shelter approving from here would otherwise never see the record, which
+// is the whole defect the re-approval rule exists to close. The flagged row gets a full-width amber
+// strip rather than a small chip because it is the one thing that must not be missed.
+//
+// This is NOT a block: nothing is auto-declined and Approve is still available (§6.5 "no bans").
+// The strip is disclosure — the shelter simply cannot approve without seeing it.
+function shelterVolunteerRequests(opts = {}) {
+  const flagged = !!opts.flagged;
   const initials = n => n.split(" ").map(w => w[0]).join("");
   let s = `<rect width="${SW}" height="${SH}" fill="${BG}"/>` + topbar("Morning dog walk");
   s += t(270, 104, "Sat, Jul 12 · 8–10 AM · 6 spots", { size: 15, anchor: "middle", fill: MUTED });
 
   s += t(34, 168, "Pending · 2", { size: 18, weight: "700", fill: NAVY });
-  [["Ana Reyes", "requested 2h ago"], ["Jose Cruz", "requested 5h ago"]].forEach(([nm, when], i) => {
-    const y = 196 + i * 152;
-    s += rrect(34, y, 472, 136, 20, WHITE, LINE);
+
+  // [name, when, reliability]. Jose is "New volunteer" in both variants — the floor rule in
+  // statusChip means 0 completed shifts never renders as "Reliable".
+  const pending = [
+    ["Ana Reyes", "requested 2h ago", flagged ? "flagged" : "Reliable"],
+    ["Jose Cruz", "requested 5h ago", "New volunteer"],
+  ];
+
+  let y = 196;
+  pending.forEach(([nm, when, rel]) => {
+    const h = rel === "flagged" ? 200 : 136;
+    s += rrect(34, y, 472, h, 20, WHITE, LINE);
     s += avq(80, y + 50, 28) + t(80, y + 58, initials(nm), { size: 20, anchor: "middle", weight: "700", fill: TEAL });
     s += t(124, y + 46, nm, { size: 21, weight: "800", fill: V2INK });
     s += t(124, y + 74, when, { size: 15, fill: MUTED });
-    s += rrect(124, y + 92, 158, 40, 20, WHITE, LINE) + t(203, y + 118, "Decline", { size: 17, anchor: "middle", fill: NAVY, weight: "700" });
-    s += rrect(300, y + 92, 180, 40, 20, TEAL) + t(390, y + 118, "Approve", { size: 17, anchor: "middle", fill: WHITE, weight: "700" });
+
+    let by = y + 92;                       // button row
+    if (rel === "flagged") {
+      s += rrect(70, y + 92, 400, 52, 14, WARNBG);
+      s += alertIcon(98, y + 118, 12, WARN2);
+      s += t(124, y + 112, "Needs re-approval", { size: 15.5, weight: "800", fill: WARN2 });
+      s += t(124, y + 133, "3 no-shows in a row", { size: 13.5, fill: "#8a6d3b" });
+      by = y + 156;
+    } else {
+      s += statusChip(486, y + 30, rel);
+    }
+    s += rrect(124, by, 158, 40, 20, WHITE, LINE) + t(203, by + 26, "Decline", { size: 17, anchor: "middle", fill: NAVY, weight: "700" });
+    s += rrect(300, by, 180, 40, 20, TEAL) + t(390, by + 26, "Approve", { size: 17, anchor: "middle", fill: WHITE, weight: "700" });
+    y += h + 16;
   });
 
-  s += t(34, 528, "Confirmed · 4", { size: 18, weight: "700", fill: NAVY });
+  const cy0 = y + 28;                      // laid out from the rows above, so the flagged
+  s += t(34, cy0, "Confirmed · 4", { size: 18, weight: "700", fill: NAVY });  // variant can't collide
   [["Maria Santos", "Confirmed"], ["Pedro Lim", "Confirmed"]].forEach(([nm, st], i) => {
-    const y = 556 + i * 88;
-    s += rrect(34, y, 472, 72, 18, WHITE, LINE);
-    s += avq(72, y + 36, 24) + t(72, y + 43, initials(nm), { size: 18, anchor: "middle", weight: "700", fill: TEAL });
-    s += t(112, y + 44, nm, { size: 20, weight: "800", fill: V2INK });
-    s += statusChip(486, y + 18, st);
+    const yy = cy0 + 28 + i * 88;
+    s += rrect(34, yy, 472, 72, 18, WHITE, LINE);
+    s += avq(72, yy + 36, 24) + t(72, yy + 43, initials(nm), { size: 18, anchor: "middle", weight: "700", fill: TEAL });
+    s += t(112, yy + 44, nm, { size: 20, weight: "800", fill: V2INK });
+    s += statusChip(486, yy + 18, st);
   });
   return s;
 }
@@ -4137,6 +4191,41 @@ function shelterVolunteerCancelConfirm(paws) {
   return s;
 }
 
+// ---------- Shelter Kawang-Gawa: no-show re-approval confirm ----------
+// Reached from Approve on a FLAGGED request row. The gate the §6.5 rule actually needs: a shelter
+// must not be able to approve a repeat no-show without seeing the record.
+//
+// Deliberately NOT a danger modal (contrast shelterVolunteerCancelConfirm, which is red): approving
+// is constructive, and the policy is explicitly soft — "no bans". So the mark is amber, the primary
+// action stays the teal "Approve anyway", and "Decline instead" is the secondary. The modal's job is
+// DISCLOSURE, not dissuasion; making it scary would quietly turn a soft policy into a hard one.
+//
+// It names the FACTS (the run, the completions, the last attendance) the way the cancel confirm
+// names the blast radius — a shelter deciding this deserves the record, not a generic "are you sure".
+function shelterVolunteerReapproveConfirm(paws) {
+  let s = shelterVolunteerRequests({ flagged: true });
+  s += `<rect width="${SW}" height="${SH}" fill="#0d1826" opacity="0.55"/>`;
+
+  s += rrect(50, 300, 440, 546, 26, WHITE);
+  s += `<circle cx="270" cy="372" r="38" fill="${WARNBG}"/>` + alertIcon(270, 372, 20, WARN2);
+  s += t(270, 452, "Approve Ana anyway?", { size: 26, anchor: "middle", weight: "700", fill: NAVY });
+  s += t(270, 492, "She's missed her last 3 shifts.", { size: 17, anchor: "middle", fill: MUTED });
+  s += t(270, 518, "If she doesn't show, this slot goes unfilled.", { size: 16, anchor: "middle", fill: MUTED });
+
+  // the record — facts, not a warning
+  s += rrect(82, 550, 376, 132, 14, WARNBG);
+  [["No-shows in a row", "3"], ["Completed shifts", "5"], ["Last attended", "Jun 14"]].forEach(([k, v], i) => {
+    const ry = 582 + i * 36;
+    s += t(106, ry, k, { size: 15, fill: "#8a6d3b" });
+    s += t(434, ry, v, { size: 15, anchor: "end", weight: "800", fill: WARN2 });
+  });
+
+  s += `<rect x="82" y="704" width="376" height="68" rx="34" fill="url(#v2btn)" filter="url(#v2soft)"/>`;
+  s += t(270, 747, "Approve anyway", { size: 21, anchor: "middle", fill: WHITE, weight: "700" });
+  s += t(270, 812, "Decline instead", { size: 18, anchor: "middle", fill: DANGER, weight: "700" });
+  return s;
+}
+
 // ---------- Pet owner: notifications (the "notified" surface — reached from the bell) ----------
 // v2 notifications — card list with New/Earlier sections and a gradient "badge earned" hero.
 // kind: "owner" (Verified Member) | "shelter" (tier-2 Verified Shelter) | "rescue" (tier-1
@@ -4166,18 +4255,24 @@ function notifV2Screen(kind, paws) {
   s += t(482, y + 40, "2m", { size: 13, anchor: "end", fill: "#a9cfca" });
   y += 156;
 
+  // Owner = the volunteer's side. Shows all four volunteer-facing notification types
+  // (shift_confirmed · signup_declined · shift_reminder · shift_cancelled_by_shelter), plus one
+  // adoption item so the surface reads as shared. signup_requested is the shelter's — see below.
   const items = owner ? [
-    ["heart", "Adoption update", ["PAWS Manila moved your Milo inquiry to", "Interview — step 4 of 6."], "1h", true],
-    ["heart", "Adoption update", ["Marikina AWG finished Luna’s background", "check — a home check is next."], "3h", true],
+    ["check", "Shift confirmed", ["“Feed the rescue pack” (Sun, Jul 13) —", "added to your calendar."], "20m", true],
+    ["decline", "Shift request declined", ["PAWS Manila couldn’t take your “Morning", "dog walk” request this time."], "1h", true],
+    ["heart", "Adoption update", ["PAWS Manila moved your Milo inquiry to", "Interview — step 4 of 6."], "3h", true],
+    ["reminder", "Shift tomorrow", ["“Feed the rescue pack” is tomorrow —", "Sun, Jul 13 · 9 AM. See you there!"], "1d", false],
     ["alert", "Shift cancelled", ["“Morning dog walk” (Sat, Jul 12) was", "cancelled. Your slot was released."], "1d", false],
-    ["check", "Shift confirmed", ["“Feed the rescue pack” (Sun, Jul 13) —", "added to your calendar."], "1d", false],
-    ["paw", "New pet near you", ["Milo, an Aspin, is 2 km away."], "2d", false],
   ] : [
     ["heart", "New adoption inquiry", ["Ana Reyes (Verified Member) wants to", "adopt Milo. Tap to review."], "40m", true],
     ["person", "New volunteer sign-up", ["Jose Cruz requested “Morning dog walk”", "(Sat, Jul 12). Approve or decline."], "2h", true],
     ["alert", "Inquiry withdrawn", ["Pedro Lim withdrew their inquiry for Luna."], "1d", false],
   ];
-  const imap = { heart: [SOFT, TEAL], paw: [SOFT, TEAL], check: ["#EAF3DE", "#27500A"], alert: [WARNBG, WARN2], person: ["#ECEBF6", "#5b53a6"] };
+  const imap = { heart: [SOFT, TEAL], paw: [SOFT, TEAL], check: ["#EAF3DE", "#27500A"], alert: [WARNBG, WARN2], person: ["#ECEBF6", "#5b53a6"],
+    // signup_declined uses the same soft-red family as the "Declined" status chip (not the amber
+    // "alert" — a decline is a settled outcome, not something to act on); shift_reminder is teal.
+    decline: ["#F3E3E1", "#8A3B3B"], reminder: ["#E4EEF0", "#1C6B6B"] };
   let hadNew = false, hadEarlier = false;
   items.forEach(([ic, title, lines, when, unread]) => {
     if (unread && !hadNew) { s += t(34, y + 12, "New", { size: 16, weight: "800", fill: V2INK }); y += 30; hadNew = true; }
@@ -4190,6 +4285,12 @@ function notifV2Screen(kind, paws) {
     else if (ic === "paw") s += pawmark(70, y + h / 2, 12, ifg);
     else if (ic === "check") s += `<polyline points="62,${y + h / 2} 68,${y + h / 2 + 6} 79,${y + h / 2 - 7}" fill="none" stroke="${ifg}" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"/>`;
     else if (ic === "person") s += personIcon(70, y + h / 2 + 1, 24, ifg);
+    else if (ic === "reminder") s += clockIcon(70, y + h / 2, 15, ifg);
+    else if (ic === "decline") {
+      const cx = 70, cy = y + h / 2;
+      s += `<line x1="${cx - 8}" y1="${cy - 8}" x2="${cx + 8}" y2="${cy + 8}" stroke="${ifg}" stroke-width="3.2" stroke-linecap="round"/>` +
+           `<line x1="${cx - 8}" y1="${cy + 8}" x2="${cx + 8}" y2="${cy - 8}" stroke="${ifg}" stroke-width="3.2" stroke-linecap="round"/>`;
+    }
     else s += alertIcon(70, y + h / 2, 13, ifg);
     s += t(104, y + 36, title, { size: 17, weight: "800", fill: V2INK });
     s += t(468, y + 36, when, { size: 13, anchor: "end", fill: "#b8b6ad" });
@@ -5822,9 +5923,11 @@ function phone(inner) {
     ["screen-verify-documents.png", verifyDocuments()],
     ["screen-verify-documents-ngo.png", verifyDocuments({ ngo: true })],
     ["screen-verify-documents-member.png", verifyDocuments({ rescuer: true })],
-    // two states, never one screen: documents sent (under review) vs not sent yet
+    // three states, never one screen: documents sent (under review) vs sent-nothing (not sent yet)
+    // vs partial-deferred (base set in, SEC/BAI/PRC deferred — Q8, 2026-08-06)
     ["screen-shelter-dashboard-pending.png", shelterDashboardPending(paws)],
     ["screen-shelter-dashboard-incomplete.png", shelterDashboardPending(paws, { submitted: false })],
+    ["screen-shelter-dashboard-incomplete-partial.png", shelterDashboardPending(paws, { partial: true })],
     ["screen-shelter-dashboard-pending-rescue.png", shelterDashboardPending(paws, { tier1: true })],
     ["screen-shelter-dashboard-incomplete-rescue.png", shelterDashboardPending(paws, { tier1: true, submitted: false })],
     ["screen-shelter-dashboard-provisional.png", shelterDashboardProvisional(paws)],
@@ -5843,6 +5946,9 @@ function phone(inner) {
     ["screen-shelter-volunteer.png", shelterVolunteer(paws)],
     ["screen-shelter-volunteer-create.png", shelterVolunteerCreate()],
     ["screen-shelter-volunteer-requests.png", shelterVolunteerRequests()],
+    // no-show re-approval (§6.5): the flagged request row + the disclosure confirm over it
+    ["screen-shelter-volunteer-requests-flagged.png", shelterVolunteerRequests({ flagged: true })],
+    ["screen-shelter-volunteer-reapprove-confirm.png", shelterVolunteerReapproveConfirm(paws)],
     ["screen-shelter-volunteer-detail.png", shelterVolunteerDetail(paws)],
     ["screen-shelter-volunteer-calendar.png", shelterVolunteerCalendar(paws)],
     ["screen-kawanggawa-cancel.png", kawangGawaCancel(paws)],
