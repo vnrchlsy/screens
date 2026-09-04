@@ -374,12 +374,16 @@ function moderation() {
   const cols = [["TYPE", x0 + 28], ["FLAGGED", x0 + 170], ["REPORTED BY", x0 + 620], ["WHEN", x0 + 790], ["STATUS", x0 + 892], ["", x0 + tw - 128]];
   cols.forEach(([c, cx]) => s += t(cx, ty + 40, c, { size: 11.5, weight: "700", fill: FAINT, ls: 0.8 }));
   s += `<line x1="${x0 + 20}" y1="${ty + 58}" x2="${x0 + tw - 20}" y2="${ty + 58}" stroke="${HAIR}" stroke-width="1"/>`;
-  const cmap = { Listing: [SOFT, TEAL], Message: ["#ecebf6", VIOLET], Account: [WARNBG, WARN2] };
+  // Story = Sprint 6 UGC (D-S6-4); actioning a story flag HIDES the story (status='hidden'),
+  // never deletes — the row/photos survive and the author sees the hidden state.
+  const cmap = { Listing: [SOFT, TEAL], Message: ["#ecebf6", VIOLET], Account: [WARNBG, WARN2],
+                 Story: [OKBG, OK] };
   const rows = [
     ["Listing", "“Free puppies!! Take one now!!!” — suspected spam", "1 report", "2h ago", "Open"],
+    ["Story", "Off-topic — not a real success story", "1 report", "6h ago", "Open"],
     ["Message", "Harassment in an adoption inquiry thread", "2 reports", "5h ago", "Open"],
     ["Account", "Duplicate shelter profile", "System", "1d ago", "Open"],
-    ["Listing", "Mismatched photos on a listing", "1 report", "2d ago", "Actioned"],
+    ["Story", "Misleading — animal wasn't actually adopted", "2 reports", "2d ago", "Actioned"],
     ["Message", "Off-topic comment on a story", "1 report", "3d ago", "Dismissed"],
   ];
   rows.forEach(([type, summary, reporter, when, st], i) => {

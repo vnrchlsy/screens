@@ -14,6 +14,11 @@ const NAVY = "#1F3A5F", TEAL = "#1C6B6B", TEALDK = "#14504F", ACCENT = "#2E8B8B"
       CREAM = "#F5F6F3", LINE = "#e3e1d9", WHITE = "#ffffff";
 
 const SW = 540, SH = 1170;   // screen
+// §13.4 · 44pt (the platform minimum, and this system's own non-negotiable) expressed in canvas
+// units: 44 / 874 * 1170. Stacked TEXT links must sit at least this far apart — unlike a button,
+// a bare line of text is only as tall as its line box, so two links closer than this overlap in
+// the hand even though they look separated on screen.
+const TAP_SLOT = 59;
 const PAD = 30;              // bezel
 
 function t(x, y, s, o = {}) {
@@ -166,8 +171,14 @@ function welcome(logo, paw) {
   s += rrect(34, cy + 124, 472, 64, 32, WHITE, LINE) + t(270, cy + 164, "Browse as a guest", { size: 20, anchor: "middle", fill: TEALDK, weight: "700" });
   s += t(270, cy + 236, "or continue with", { size: 16, anchor: "middle", fill: "#9a988f" });
   s += providerRow(34, cy + 254, 472, ["google", "apple"]);
+  // §13.4 · these two text links were 40 units apart (~30pt on a 402x874 device) — under the 44pt
+  // minimum this system lists as non-negotiable, and close enough that a thumb aimed at one lands
+  // on the other. Found on a real device during the 2026-09-04 exit-criteria walk, where taps meant
+  // for the guest link kept opening Terms. TAP_SLOT is 44pt expressed in this canvas's units, so
+  // each link now owns a full tap slot. The BUTTONS above were always fine (68 and 64 tall) —
+  // this is specifically the bare-text-link failure mode.
   s += t(270, cy + 356, "Already have an account?  Log in", { size: 19, anchor: "middle", fill: MUTED });
-  s += t(270, cy + 396, "By continuing you agree to our Terms &amp; Privacy.", { size: 15, anchor: "middle", fill: "#9a988f" });
+  s += t(270, cy + 356 + TAP_SLOT, "By continuing you agree to our Terms &amp; Privacy.", { size: 15, anchor: "middle", fill: "#9a988f" });
   return s;
 }
 
@@ -818,13 +829,25 @@ function addPet(paws) {
   return s;
 }
 
-// ---------- Screen 7: Settings ----------
+// ---------- Screen 7: Settings (V2 · redesigned for US-N4) ----------
+// WHY THIS WAS REDRAWN (Sprint 7 · US-N4): the v1 screen carried Edit profile / Phone /
+// Email / Help / About / Privacy & terms / Log out — and NONE of the privacy controls
+// Design Package §3.1.1 promises, no export, and no delete. Tech Spec §12.6 commits us to
+// "in-app: view/export my data, edit, and delete account", so the screen as drawn could not
+// satisfy RA 10173 even if it had been built (it never was — there is no SettingsScreen).
+// Three groups now carry the sprint's shape: ACCOUNT (who you are) · PRIVACY (what we may
+// do) · YOUR DATA (the two data-subject rights). Support drops "About Kupkop PH" — the
+// version line at the foot already answers it, and a row that only shows a version number
+// is a row that costs a tap to learn nothing.
 function settings() {
   let s = `<rect width="${SW}" height="${SH}" fill="${BG}"/>` + topbar("Settings");
 
-  const item = (gx, gy, gw, label, value, i, n) => {
-    let r = t(gx, gy + 44, label, { size: 22, weight: "600", fill: NAVY });
-    if (value) r += t(gx + gw - 44, gy + 44, value, { size: 20, anchor: "end", fill: MUTED });
+  // A settings row: label, optional right-hand value, chevron, hairline between siblings.
+  // `danger` tints only the label — the row still behaves like every other row; the colour
+  // is a warning, not a different control.
+  const item = (gx, gy, gw, label, value, i, n, danger) => {
+    let r = t(gx, gy + 44, label, { size: 22, weight: "600", fill: danger ? DANGER : V2INK });
+    if (value) r += t(gx + gw - 44, gy + 44, value, { size: 18, anchor: "end", fill: MUTED });
     r += t(gx + gw - 6, gy + 46, "›", { size: 32, anchor: "end", fill: "#b8b6ad" });
     if (i < n - 1) r += `<line x1="${gx}" y1="${gy + 70}" x2="${gx + gw}" y2="${gy + 70}" stroke="${LINE}" stroke-width="1.5"/>`;
     return r;
@@ -832,21 +855,218 @@ function settings() {
   const grp = (title, y, rows) => {
     let r = t(34, y, title, { size: 16, weight: "700", fill: MUTED, ls: 1.5 });
     const gy = y + 18, h = rows.length * 70;
-    r += rrect(34, gy, 472, h, 20, WHITE, LINE);
-    rows.forEach((rw, i) => { r += item(58, gy + i * 70, 424, rw[0], rw[1], i, rows.length); });
+    r += rrect(34, gy, 472, h, 20, WHITE, LINE);   // WHITE+LINE = the v2 soft-shadow card
+    rows.forEach((rw, i) => { r += item(58, gy + i * 70, 424, rw[0], rw[1], i, rows.length, rw[2]); });
     return { r, end: gy + h };
   };
 
-  let g = grp("ACCOUNT", 158, [["Edit profile"], ["Phone number", "+63 917···"], ["Email address"]]);
+  let g = grp("ACCOUNT", 150, [["Edit profile"], ["Phone number", "+63 917···"], ["Email address"]]);
   s += g.r;
-  g = grp("PREFERENCES", g.end + 30, [["Notifications"], ["Location"]]);
+  // One row, not four toggles: the toggles live on their own screen because each needs a
+  // line of explanation to be meaningful, and a settings list is the wrong place to read.
+  g = grp("PRIVACY", g.end + 28, [["Privacy controls", "City-only"], ["Notifications"]]);
   s += g.r;
-  g = grp("SUPPORT", g.end + 30, [["Help center"], ["About Kupkop PH"], ["Privacy &amp; terms"]]);
+  // §12.6's two data-subject rights, named as the user would name them — not "portability"
+  // and "erasure", which are the regulation's words, not a person's.
+  g = grp("YOUR DATA", g.end + 28, [["Export my data"], ["Delete account", "", true]]);
+  s += g.r;
+  g = grp("SUPPORT", g.end + 28, [["Help center"], ["Privacy &amp; terms"]]);
   s += g.r;
 
-  const ly = g.end + 34;
-  s += rrect(34, ly, 472, 70, 20, WHITE, LINE) + t(270, ly + 44, "Log out", { size: 22, anchor: "middle", weight: "700", fill: "#B23B3B" });
-  s += t(270, ly + 132, "Kupkop PH · v0.1.0 (MVP)", { size: 16, anchor: "middle", fill: "#b8b6ad" });
+  const ly = g.end + 30;
+  s += rrect(34, ly, 472, 70, 20, WHITE, LINE) + t(270, ly + 44, "Log out", { size: 22, anchor: "middle", weight: "700", fill: DANGER });
+  s += t(270, ly + 116, "Kupkop PH · v1.0.0 (MVP)", { size: 16, anchor: "middle", fill: "#b8b6ad" });
+  return s;
+}
+
+// ---------- US-N4 · Privacy controls ----------
+// GET / PATCH /me/settings (live since Sprint 1, zero mobile callers until US-N5) + the
+// new analytics_consent column (D-S7-3).
+//
+// THE RULE THIS SCREEN IS BUILT AROUND: never ship a toggle that does nothing. Two of the
+// four stored preferences cannot honestly be switches today — masked_contact is enforced
+// in Phase-2 booking (in-app chat does not exist), and approximate_location is always on
+// server-side because §12.5 stores a city and never coordinates. Drawn as toggles they
+// would be theatre, and theatre on the PRIVACY screen is the worst place for it. They
+// appear instead as stated facts under "Always on", which is what they actually are.
+function settingsPrivacy() {
+  let s = `<rect width="${SW}" height="${SH}" fill="${BG}"/>` + topbar("Privacy");
+
+  // A toggle row is label + honest explanation + switch. The explanation is the point: a
+  // bare "Analytics" switch asks people to consent to a word. `note` takes an array when
+  // the sentence needs two lines — the switch sits at x=420, so a single line has ~360px
+  // and anything longer runs under the control (it did, on first render).
+  const sw = (y, label, note, on) => {
+    let r = t(58, y + 34, label, { size: 21, weight: "700", fill: V2INK });
+    [].concat(note).forEach((line, i) => { r += t(58, y + 62 + i * 24, line, { size: 15, fill: MUTED }); });
+    return r + toggleSwitch(420, y + 26, on);
+  };
+  const grp = (title, y, rows, rowH = 92) => {
+    let r = t(34, y, title, { size: 16, weight: "700", fill: MUTED, ls: 1.5 });
+    const gy = y + 18, h = rows.length * rowH;
+    r += rrect(34, gy, 472, h, 20, WHITE, LINE);
+    rows.forEach((rw, i) => {
+      r += sw(gy + i * rowH, rw[0], rw[1], rw[2]);
+      if (i < rows.length - 1) r += `<line x1="58" y1="${gy + (i + 1) * rowH}" x2="482" y2="${gy + (i + 1) * rowH}" stroke="${LINE}" stroke-width="1.5"/>`;
+    });
+    return { r, end: gy + h };
+  };
+
+  let g = grp("NOTIFICATIONS", 150, [
+    ["Push notifications", "Rescue updates, matches, and requests.", true],
+    ["Marketing emails", "News and campaigns. Off unless you ask.", false],
+  ]);
+  s += g.r;
+
+  // Opt-in, default OFF (D-S7-3). The copy says what is and is not collected, because
+  // "help us improve" without that sentence is not informed consent.
+  g = grp("ANALYTICS", g.end + 28, [
+    ["Help improve Kupkop",
+     ["Anonymous usage only — never your pets,", "reports, or the people you talk to."], false],
+  ], 116);
+  s += g.r;
+  // The right to WITHDRAW consent is half of what consent means under RA 10173, and it is
+  // worth a line on the screen rather than a paragraph in a policy nobody opens.
+  s += t(34, g.end + 30, "Off by default. Turn it on or off any time —", { size: 15, fill: MUTED });
+  s += t(34, g.end + 54, "switching it off stops collection straight away.", { size: 15, fill: MUTED });
+
+  // Facts, not controls. Same card styling so they read as part of the same promise,
+  // with no switch to imply a choice that isn't there.
+  const fy = g.end + 88;
+  s += t(34, fy, "ALWAYS ON", { size: 16, weight: "700", fill: MUTED, ls: 1.5 });
+  const fgy = fy + 18;
+  s += rrect(34, fgy, 472, 208, 20, WHITE, LINE);
+  const fact = (y, label, note) =>
+    glyphShield(72, y + 30, TEAL) +
+    t(104, y + 30, label, { size: 20, weight: "700", fill: V2INK }) +
+    t(104, y + 58, note, { size: 15, fill: MUTED });
+  s += fact(fgy + 12, "Your location is city-only", "We never store your exact address or");
+  s += t(104, fgy + 92, "coordinates — only the city you pick.", { size: 15, fill: MUTED });
+  s += `<line x1="58" y1="${fgy + 112}" x2="482" y2="${fgy + 112}" stroke="${LINE}" stroke-width="1.5"/>`;
+  s += fact(fgy + 124, "Your number stays hidden", "Shared only with a shelter you sign up");
+  s += t(104, fgy + 204, "to volunteer for, and only for that shift.", { size: 15, fill: MUTED });
+
+  return s;
+}
+
+// ---------- US-N4 · Delete account ----------
+// DELETE /me. The screen's job is INFORMED consent, not friction for its own sake: it has
+// to say what survives (anonymised welfare records — D-S7-1 keeps them because the FKs and
+// §12.7 both require it) and what does not, before the typed confirmation.
+// Per the design system, the destructive button stays ENABLED — a greyed-out button with
+// no explanation is how you get a support ticket instead of a decision.
+function deleteAccount() {
+  let s = `<rect width="${SW}" height="${SH}" fill="${BG}"/>` + topbar("Delete account");
+
+  s += t(34, 158, "This can't be undone", { size: 30, weight: "800", fill: V2INK, ls: -0.5 });
+  s += t(34, 196, "You have 30 days to change your mind. After", { size: 18, fill: MUTED });
+  s += t(34, 222, "that, your personal details are erased for good.", { size: 18, fill: MUTED });
+
+  // Two columns of consequence, side by side, because "what happens to my stuff" is the
+  // actual question and a wall of prose does not answer it.
+  const col = (x, w, head, headFill, items, iconFill) => {
+    let r = rrect(x, 254, w, 296, 22, WHITE, LINE);
+    r += t(x + 24, 296, head, { size: 17, weight: "800", fill: headFill, ls: 0.6 });
+    items.forEach((line, i) => {
+      const y = 336 + i * 56;
+      r += `<circle cx="${x + 31}" cy="${y - 6}" r="4" fill="${iconFill}"/>`;
+      r += t(x + 48, y, line[0], { size: 16, weight: "700", fill: V2INK });
+      if (line[1]) r += t(x + 48, y + 22, line[1], { size: 14, fill: MUTED });
+    });
+    return r;
+  };
+  s += col(34, 230, "REMOVED", DANGER, [
+    ["Your name", "and photo"], ["Phone, email", "and address"], ["Your pets", "and listings"],
+    ["Saved places", ""],
+  ], DANGER);
+  s += col(276, 230, "KEPT, ANONYMOUS", OK, [
+    ["Rescues you", "resolved"], ["Adoptions", "completed"], ["Shifts you", "volunteered"],
+    ["Shown as", "“Deleted user”"],
+  ], OK);
+
+  s += t(34, 590, "These stay so the animals' records stay whole.", { size: 16, fill: MUTED });
+  s += t(34, 614, "Nothing in them points back to you.", { size: 16, fill: MUTED });
+
+  s += t(34, 680, "TYPE DELETE TO CONFIRM", { size: 14, weight: "700", fill: MUTED, ls: 1.2 });
+  s += v2field(34, 698, 472, "CONFIRMATION", "DELETE");
+
+  s += dbtn(34, 826, 472, "Delete my account");
+  s += btnOutline(914, "Keep my account");
+  return s;
+}
+
+// ---------- US-N4 · Delete blocked (409 has_active_commitments) ----------
+// The commitments are other people's plans, so the refusal has to be specific and
+// actionable — "you have active commitments" with no list is a dead end. Each row is the
+// thing to close and a tap to go close it. Same posture as the binding rescue claim:
+// a commitment is not unilaterally abandonable.
+function deleteBlocked() {
+  let s = `<rect width="${SW}" height="${SH}" fill="${BG}"/>` + topbar("Delete account");
+
+  s += rrect(34, 150, 472, 132, 22, WARNBG);
+  s += alertIcon(80, 216, 22, WARN2);
+  s += t(120, 200, "Two things need closing first", { size: 21, weight: "800", fill: WARN2 });
+  s += t(120, 228, "People are counting on these. Close them", { size: 16, fill: WARN2 });
+  s += t(120, 252, "and you can delete right after.", { size: 16, fill: WARN2 });
+
+  const row = (y, title, sub, chip, cbg, cfg) => {
+    let r = rrect(34, y, 472, 108, 22, WHITE, LINE);
+    r += t(58, y + 42, title, { size: 20, weight: "800", fill: V2INK });
+    r += t(58, y + 70, sub, { size: 15, fill: MUTED });
+    const w = 22 + chip.length * 9;
+    r += s6pill(456 - w, y + 26, w, 30, chip, cbg, cfg);
+    r += t(482, y + 64, "›", { size: 30, anchor: "end", fill: "#b8b6ad" });
+    return r;
+  };
+  s += t(34, 322, "OPEN COMMITMENTS", { size: 16, weight: "700", fill: MUTED, ls: 1.5 });
+  s += row(340, "Kawang-Gawa shift", "Marikina AWG · Sat, 14 Sep, 8:00am", "Confirmed", OKBG, OK);
+  s += row(464, "Adoption inquiry", "Luna · you approved it on 2 Sep", "In progress", WARNBG, WARN);
+
+  s += t(34, 616, "Cancel the shift (the shelter is notified) and", { size: 16, fill: MUTED });
+  s += t(34, 640, "finish or decline the adoption. Then come back.", { size: 16, fill: MUTED });
+
+  s += btn(724, "Review my commitments");
+  s += btnOutline(812, "Back to settings");
+  return s;
+}
+
+// ---------- US-N4 · Export ready ----------
+// GET /me/export returns the file synchronously (D-S7-2), so this is a handoff screen, not
+// a "we'll email you" screen: the file already exists and goes to the OS share sheet. The
+// contents are listed because "your data" is not a thing anyone can picture.
+function exportReady() {
+  let s = `<rect width="${SW}" height="${SH}" fill="${BG}"/>` + topbar("Export my data");
+
+  s += v2squircle(270, 236, 108, "url(#v2hero)", 34);
+  s += docGlyph(270, 236, WHITE);
+  s += t(270, 340, "Your data is ready", { size: 30, anchor: "middle", weight: "800", fill: V2INK, ls: -0.5 });
+  s += t(270, 378, "A single file you can open anywhere.", { size: 18, anchor: "middle", fill: MUTED });
+
+  s += rrect(34, 424, 472, 92, 22, WHITE, LINE);
+  s += docGlyph(80, 470, TEAL);
+  s += t(118, 462, "kupkop-export-2026-09-04.json", { size: 18, weight: "700", fill: V2INK });
+  s += t(118, 488, "148 KB · JSON", { size: 15, fill: MUTED });
+
+  s += t(34, 570, "WHAT'S INSIDE", { size: 16, weight: "700", fill: MUTED, ls: 1.5 });
+  s += rrect(34, 588, 472, 268, 20, WHITE, LINE);
+  const lines = [
+    "Your profile, settings and saved city",
+    "Your pets and adoption listings",
+    "Reports you filed and rescues you joined",
+    "Volunteer shifts, pledges and badges",
+    "Your stories and notifications",
+  ];
+  lines.forEach((line, i) => {
+    const y = 628 + i * 46;
+    s += `<circle cx="66" cy="${y - 6}" r="4" fill="${TEAL}"/>`;
+    s += t(86, y, line, { size: 17, fill: V2INK });
+  });
+
+  // Honest limit, stated on the screen rather than discovered: an export is YOUR data.
+  s += t(34, 892, "Other people's details aren't included, even in", { size: 15, fill: MUTED });
+  s += t(34, 914, "inquiries and shifts you shared with them.", { size: 15, fill: MUTED });
+
+  s += btn(958, "Share file");
   return s;
 }
 
@@ -5788,6 +6008,160 @@ function phone(inner) {
   </svg>`;
 }
 
+// =============================================================================
+// Sprint 6 · Community & lost-found (T0 stories, L1 lost & found)
+// V2 language: soft-shadow cards, filled-pill fields, squircle avatars, solid-teal
+// primaries. Stories carry no location of their own — the author's city only (D-S6-4);
+// lost/found reports reuse the precise-pin exception deliberately (rescuers must find the
+// animal). Match cards show WHY (the §11 signals), never a bare percentage.
+// =============================================================================
+const s6pill = (x, y, w, h, label, bg, fg, sz) =>
+  rrect(x, y, w, h, h / 2, bg) +
+  t(x + w / 2, y + h / 2 + (sz || 13) * 0.36, label, { size: sz || 13, anchor: "middle", weight: "700", fill: fg });
+
+const S6TYPE = { adoption: [OKBG, OK], rescue: SOFT ? [SOFT, TEAL] : [SOFT, TEAL], general: [GREYPILL, MUTED] };
+
+// ---------- T0 · Stories feed ----------
+function stories(paws) {
+  let s = `<rect width="${SW}" height="${SH}" fill="${BG}"/>` + statusbar(false) + topbar("Stories");
+  s += rrect(372, 44, 134, 44, 22, TEAL) + t(439, 72, "+ Share", { size: 17, anchor: "middle", weight: "700", fill: WHITE });
+  const cards = [
+    ["MG", "Migs G.", "Marikina", "adoption", "Adopted Luna last month — she owns the couch now. Salamat, Marikina AWG!", "24"],
+    ["AR", "Ana R.", "Pasig", "rescue", "The kitten we pulled from the drain in December is thriving. Thank you all.", "51"],
+    ["JC", "Jose C.", "Quezon City", "general", "Two years volunteering at PAWS — best decision. Come join a shift!", "12"],
+  ];
+  let y = 150;
+  cards.forEach(([ini, name, city, type, cap, likes]) => {
+    s += rrect(34, y, 472, 300, 22, WHITE, LINE);
+    s += rrect(48, y + 16, 444, 150, 16, "#dbe6e2") + pawIcon(paws.teal.uri, 270, y + 91, 56);
+    s += avq(78, y + 208, 24) + t(78, y + 214, ini, { size: 18, anchor: "middle", weight: "800", fill: TEAL });
+    s += t(114, y + 202, name, { size: 18, weight: "800", fill: V2INK });
+    s += t(114, y + 226, city, { size: 14, fill: MUTED });
+    const [bg, fg] = S6TYPE[type]; const tw = 22 + type.length * 9;
+    s += s6pill(492 - tw, y + 190, tw, 34, type, bg, fg);
+    s += t(48, y + 264, cap.length > 54 ? cap.slice(0, 54) + "…" : cap, { size: 15, fill: NAVY });
+    s += heartIcon(60, y + 288, 22, "#c9d3cf") + t(80, y + 294, likes, { size: 15, weight: "700", fill: MUTED });
+    y += 316;
+  });
+  return s;
+}
+
+// ---------- T0 · Compose a story ----------
+function storyCompose(paws) {
+  let s = `<rect width="${SW}" height="${SH}" fill="${BG}"/>` + statusbar(false) + topbar("Share a story");
+  s += t(34, 148, "A photo makes the story", { size: 26, weight: "800", fill: V2INK });
+  s += `<rect x="34" y="180" width="472" height="150" rx="20" fill="${WHITE}" stroke="${LINE}" stroke-width="2" stroke-dasharray="7 8"/>`;
+  s += `<circle cx="270" cy="238" r="28" fill="${SOFT}"/>`;
+  s += `<rect x="256" y="230" width="28" height="19" rx="4" fill="none" stroke="${TEAL}" stroke-width="2.4"/><circle cx="270" cy="240" r="5" fill="none" stroke="${TEAL}" stroke-width="2.4"/>`;
+  s += t(270, 300, "Add a photo · required", { size: 16, anchor: "middle", fill: TEAL, weight: "700" });
+  s += t(34, 372, "Caption", { size: 14, weight: "600", fill: MUTED, ls: 0.4 });
+  s += rrect(34, 386, 472, 128, 18, WHITE, LINE);
+  s += t(58, 424, "Tell people what happened —", { size: 16, fill: "#9a988f" });
+  s += t(58, 452, "how you met, how it's going now.", { size: 16, fill: "#9a988f" });
+  s += t(34, 560, "Link to (optional)", { size: 14, weight: "600", fill: MUTED, ls: 0.4 });
+  s += chipRow(34, 578, ["An adoption", "A rescue", "Nothing"], 0);
+  s += t(34, 676, "We'll tag your story automatically from what you link.", { size: 14.5, fill: "#9a988f" });
+  s += btn(980, "Post story");
+  return s;
+}
+
+// ---------- T0 · Story detail (react + flag) ----------
+function storyDetail(paws) {
+  let s = `<rect width="${SW}" height="${SH}" fill="${BG}"/>` + statusbar(false) + topbar("Story");
+  s += `<circle cx="484" cy="66" r="22" fill="${WHITE}" filter="url(#v2soft)"/>` + t(484, 74, "⋯", { size: 26, anchor: "middle", weight: "800", fill: V2INK });
+  s += rrect(34, 122, 472, 300, 22, "#dbe6e2") + pawIcon(paws.teal.uri, 270, 272, 84);
+  s += avq(70, 470, 26) + t(70, 477, "MG", { size: 20, anchor: "middle", weight: "800", fill: TEAL });
+  s += t(110, 462, "Migs G.", { size: 19, weight: "800", fill: V2INK });
+  s += t(110, 488, "Marikina", { size: 15, fill: MUTED });
+  s += s6pill(410, 452, 96, 34, "adoption", OKBG, OK);
+  const lines = ["Adopted Luna last month and she has completely", "taken over the couch. Grateful to the team at", "Marikina AWG who made the whole process easy —", "and to whoever rescued her before us. 🐾"];
+  lines.forEach((ln, i) => { s += t(34, 548 + i * 34, ln, { size: 17, fill: NAVY }); });
+  s += `<line x1="34" y1="712" x2="506" y2="712" stroke="${LINE}" stroke-width="1.5"/>`;
+  s += rrect(34, 736, 230, 60, 30, WHITE, LINE) + heartIcon(90, 766, 26, TEAL) + t(120, 774, "React · 24", { size: 17, weight: "700", fill: V2INK });
+  s += rrect(276, 736, 230, 60, 30, WHITE, LINE) + alertIcon(320, 766, 12, MUTED) + t(342, 774, "Flag", { size: 17, weight: "700", fill: MUTED });
+  s += t(270, 862, "Flagging sends it to Kupkop for review.", { size: 14, anchor: "middle", fill: "#b8b6ad" });
+  return s;
+}
+
+// ---------- L1 · File a lost / found report ----------
+function reportLostFound(mode, paws) {
+  const lost = mode === "lost";
+  let s = `<rect width="${SW}" height="${SH}" fill="${BG}"/>` + topbar(lost ? "Report a lost pet" : "Report a found pet");
+  s += t(34, 150, lost ? "Describe your pet" : "Describe the animal", { size: 26, weight: "800", fill: V2INK });
+  s += t(34, 182, "The more detail, the better the matches.", { size: 15.5, fill: MUTED });
+  s += `<rect x="34" y="206" width="472" height="104" rx="20" fill="${WHITE}" stroke="${LINE}" stroke-width="2" stroke-dasharray="7 8"/>`;
+  s += `<circle cx="270" cy="252" r="24" fill="${SOFT}"/>` + `<rect x="258" y="245" width="24" height="16" rx="4" fill="none" stroke="${TEAL}" stroke-width="2.3"/><circle cx="270" cy="254" r="4.5" fill="none" stroke="${TEAL}" stroke-width="2.3"/>`;
+  s += t(270, 298, "Add a photo", { size: 15, anchor: "middle", fill: TEAL, weight: "700" });
+  s += t(34, 346, "Animal", { size: 14, weight: "600", fill: MUTED, ls: 0.4 });
+  s += chipRow(34, 360, ["Dog", "Cat", "Other"], 0);
+  s += field(34, 438, 472, "Breed", "Aspin (askal)");
+  s += field(34, 528, 472, "Colour &amp; markings", "Brown, white chest, black tail");
+  s += t(34, 634, "Size", { size: 14, weight: "600", fill: MUTED, ls: 0.4 });
+  s += chipRow(34, 648, ["Small", "Medium", "Large"], 1);
+  s += t(34, 726, "Sex", { size: 14, weight: "600", fill: MUTED, ls: 0.4 });
+  s += chipRow(34, 740, ["Male", "Female", "Unknown"], 0);
+  s += rrect(34, 818, 472, 76, 20, WHITE, LINE);
+  s += `<circle cx="80" cy="856" r="22" fill="${SOFT}"/>` + pinIcon(80, 852, TEAL);
+  s += t(118, 848, lost ? "Where last seen" : "Where you found it", { size: 16.5, weight: "700", fill: NAVY });
+  s += t(118, 872, "12 Aurora Blvd, Marikina City", { size: 14, fill: MUTED });
+  s += t(486, 862, "Adjust ›", { size: 15, anchor: "end", fill: TEAL, weight: "700" });
+  s += btn(918, lost ? "Post lost report" : "Post found report");
+  s += t(270, 1020, "We'll check it against nearby reports right away.", { size: 14, anchor: "middle", fill: "#b8b6ad" });
+  return s;
+}
+
+// ---------- L1 · Possible matches (suggestion list) ----------
+function reportMatches(paws) {
+  let s = `<rect width="${SW}" height="${SH}" fill="${BG}"/>` + statusbar(false) + topbar("Possible matches");
+  s += t(34, 150, "These might be your pet", { size: 26, weight: "800", fill: V2INK });
+  s += t(34, 182, "You decide — nothing happens until you confirm.", { size: 15, fill: MUTED });
+  const cards = [
+    ["found", "400 m away · 2 days apart · colours match", "Very likely"],
+    ["found", "3 km away · 9 days apart · same size", "Possible"],
+  ];
+  let y = 222;
+  cards.forEach(([type, reasons, strength]) => {
+    s += rrect(34, y, 472, 250, 22, WHITE, LINE);
+    s += rrect(48, y + 16, 200, 132, 16, "#dbe6e2") + pawIcon(paws.teal.uri, 148, y + 82, 48);
+    s += t(268, y + 44, type === "found" ? "Found report" : "Lost report", { size: 17, weight: "800", fill: V2INK });
+    s += s6pill(268, y + 58, 118, 32, strength, strength === "Very likely" ? OKBG : WARNBG, strength === "Very likely" ? OK : WARN);
+    s += t(268, y + 128, reasons.length > 24 ? "400 m · 2 days apart" : reasons, { size: 13.5, fill: MUTED });
+    s += t(268, y + 148, "colours match", { size: 13.5, fill: MUTED });
+    s += rrect(48, y + 172, 210, 58, 29, TEAL) + t(153, y + 207, "This is my pet", { size: 16, anchor: "middle", weight: "700", fill: WHITE });
+    s += rrect(268, y + 172, 224, 58, 29, WHITE, LINE) + t(380, y + 207, "Not a match", { size: 16, anchor: "middle", weight: "700", fill: MUTED });
+    y += 266;
+  });
+  s += t(270, y + 24, "Both reporters see this suggestion.", { size: 14, anchor: "middle", fill: "#b8b6ad" });
+  return s;
+}
+
+// ---------- L1 · Match detail (side-by-side) ----------
+function matchDetail(paws) {
+  let s = `<rect width="${SW}" height="${SH}" fill="${BG}"/>` + statusbar(false) + topbar("Match");
+  const col = (x, title, tone, rows) => {
+    let g = rrect(x, 132, 226, 470, 22, WHITE, LINE);
+    g += s6pill(x + 16, 150, 110, 32, title, tone[0], tone[1]);
+    g += rrect(x + 16, 196, 194, 150, 16, "#dbe6e2") + pawIcon(paws.teal.uri, x + 113, 271, 48);
+    rows.forEach(([k, v], i) => {
+      const ry = 380 + i * 50;
+      g += t(x + 16, ry, k, { size: 12.5, fill: MUTED, ls: 0.3 });
+      g += t(x + 16, ry + 22, v, { size: 15.5, weight: "700", fill: V2INK });
+    });
+    return g;
+  };
+  s += col(34, "Your report · lost", [SOFT, TEAL],
+    [["Breed", "Aspin"], ["Colour", "Brown, white"], ["Size", "Medium"], ["Last seen", "Marikina"]]);
+  s += col(280, "Found nearby", [OKBG, OK],
+    [["Breed", "Aspin"], ["Colour", "Brown"], ["Size", "Medium"], ["Found", "Marikina"]]);
+  s += rrect(34, 626, 472, 96, 20, SOFT);
+  s += t(58, 662, "Why we matched these", { size: 14, weight: "700", fill: TEALDK });
+  s += t(58, 692, "400 m apart · 2 days apart · colours &amp; size match", { size: 14.5, fill: TEALDK });
+  s += btn(760, "This is my pet");
+  s += btnOutline(842, "Not a match");
+  s += t(270, 940, "Confirming links both reports and marks them reunited.", { size: 14, anchor: "middle", fill: "#b8b6ad" });
+  return s;
+}
+
 (async () => {
   // Load the real Kupkop logo, trim whitespace, embed as a data URI.
   const { data, info } = await sharp(path.join(DIR, "..", "..", "kupkop_logo.PNG"))
@@ -5875,6 +6249,11 @@ function phone(inner) {
     ["screen-profile.png", profile(paws)],
     ["screen-add-pet.png", addPet(paws)],
     ["screen-settings.png", settings()],
+    // US-N4 · the RA 10173 surfaces (Sprint 7)
+    ["screen-settings-privacy.png", settingsPrivacy()],
+    ["screen-delete-account.png", deleteAccount()],
+    ["screen-delete-blocked.png", deleteBlocked()],
+    ["screen-export-ready.png", exportReady()],
     ["screen-shelter-setup.png", shelterSetup(paws)],
     ["screen-shelter-setup-contact.png", shelterSetupContact(paws)],
     ["screen-shelter-dashboard.png", shelterDashboard(paws)],
@@ -5983,6 +6362,14 @@ function phone(inner) {
     ["screen-shelter-notifications-rescue.png", notifV2Screen("rescue", paws)],
     ["screen-kawanggawa-checkin.png", kawangGawaCheckin(paws)],
     ["screen-shelter-volunteer-edit.png", shelterVolunteerEdit(paws)],
+    // Sprint 6 · T0 stories + L1 lost & found
+    ["screen-stories.png", stories(paws)],
+    ["screen-story-compose.png", storyCompose(paws)],
+    ["screen-story-detail.png", storyDetail(paws)],
+    ["screen-report-lost.png", reportLostFound("lost", paws)],
+    ["screen-report-found.png", reportLostFound("found", paws)],
+    ["screen-report-matches.png", reportMatches(paws)],
+    ["screen-match-detail.png", matchDetail(paws)],
   ];
   const fs = require("fs");
   for (const [name, inner, opts] of out) {
